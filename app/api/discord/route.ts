@@ -1,13 +1,4 @@
-import { Client, GatewayIntentBits, type TextChannel } from "discord.js"
 import { ethers } from "ethers"
-
-// Configure Discord client with minimal intents
-const client = new Client({
-  intents: [GatewayIntentBits.Guilds],
-  rest: {
-    version: "10",
-  },
-})
 
 // Constants
 const TOKEN_ADDRESS = "0xB770074eA2A8325440798fDF1c29B235b31922Ae"
@@ -24,31 +15,40 @@ export async function GET() {
   }
 
   try {
-    // Initialize blockchain connection
+    // Get token price
     const provider = new ethers.JsonRpcProvider("https://evm.cronos.org/")
     const router = new ethers.Contract(ROUTER_ADDRESS, ROUTER_ABI, provider)
     const token = new ethers.Contract(TOKEN_ADDRESS, ERC20_ABI, provider)
 
-    // Get token info and price
     const [symbol, decimals] = await Promise.all([token.symbol(), token.decimals()])
 
     const amountIn = ethers.parseUnits("1", decimals)
     const amounts = await router.getAmountsOut(amountIn, [TOKEN_ADDRESS, WCRO, USDC])
     const price = Number(ethers.formatUnits(amounts[2], 6))
 
-    // Initialize Discord client and send message
-    await client.login(process.env.DISCORD_TOKEN)
-    const channel = (await client.channels.fetch(process.env.DISCORD_CHANNEL_ID)) as TextChannel
-
-    const message = `
+    // Prepare Discord message
+    const message = {
+      content: `
 📊 **${symbol} Price Update**
 💵 Current Price: $${price.toFixed(6)}
 ⏰ Updated: ${new Date().toLocaleString()}
 🔗 Contract: \`${TOKEN_ADDRESS}\`
-    `
+      `,
+    }
 
-    await channel.send(message)
-    await client.destroy() // Clean up connection
+    // Send message using Discord REST API
+    const response = await fetch(`https://discord.com/api/v10/channels/${process.env.DISCORD_CHANNEL_ID}/messages`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bot ${process.env.DISCORD_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(message),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Discord API error: ${response.status} ${response.statusText}`)
+    }
 
     return new Response("Price update sent successfully", { status: 200 })
   } catch (error) {
